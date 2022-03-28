@@ -8,7 +8,7 @@ captures/
 bin/
 gen/
 target/
-
+app/release/
 # android studio files
 .idea/
 *.iml

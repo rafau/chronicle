@@ -9,6 +9,8 @@ import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED
 import android.text.format.DateUtils
+import android.view.Gravity
+import android.widget.Toast
 import androidx.lifecycle.*
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.github.michaelbull.result.Ok
@@ -234,9 +236,19 @@ class CurrentlyPlayingViewModel(
     val sleepTimerChooserState: LiveData<BottomChooserState>
         get() = _sleepTimerChooserState
 
+    private var _jumpForwardsIcon = MutableLiveData(makeJumpForwardsIcon())
+    val jumpForwardsIcon: LiveData<Int>
+        get() = _jumpForwardsIcon
+
+    private var _jumpBackwardsIcon = MutableLiveData(makeJumpBackwardsIcon())
+    val jumpBackwardsIcon: LiveData<Int>
+        get() = _jumpBackwardsIcon
+
     private val prefsChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
             PrefsRepo.KEY_PLAYBACK_SPEED -> _speed.postValue(prefsRepo.playbackSpeed)
+            PrefsRepo.KEY_JUMP_FORWARD_SECONDS -> _jumpForwardsIcon.value = makeJumpForwardsIcon()
+            PrefsRepo.KEY_JUMP_BACKWARD_SECONDS -> _jumpBackwardsIcon.value = makeJumpBackwardsIcon()
         }
     }
 
@@ -344,12 +356,77 @@ class CurrentlyPlayingViewModel(
         }
     }
 
+    fun skipToNext() {
+        skipToChapter(SKIP_TO_NEXT, forward = true)
+
+    }
+
+    fun skipToPrevious() {
+        skipToChapter(SKIP_TO_PREVIOUS, forward = false)
+    }
+
+    private fun skipToChapter(action: PlaybackStateCompat.CustomAction, forward: Boolean) {
+        val transportControls = mediaServiceConnection.transportControls
+        mediaServiceConnection.let { connection ->
+            if (connection.nowPlaying.value != NOTHING_PLAYING) {
+                // Service will be alive, so we can let it handle the action
+                Timber.i("Seeking!")
+                transportControls?.sendCustomAction(action, null)
+            } else {
+                val currentChapterIndex = currentlyPlaying.book.value.chapters.indexOf(currentlyPlaying.chapter.value)
+                var skipToChapterIndex : Int
+                if(forward) {
+                    skipToChapterIndex = currentChapterIndex + 1
+                    if(skipToChapterIndex < currentlyPlaying.book.value.chapters.size) {
+                        val skipToChapter = currentlyPlaying.book.value.chapters[skipToChapterIndex]
+                        jumpToChapter(skipToChapter.startTimeOffset,currentlyPlaying.track.value.id,hasUserConfirmation = true)
+                    } else {
+                        val toast = Toast.makeText(
+                            Injector.get().applicationContext(), R.string.skip_forwards_reached_last_chapter,
+                            Toast.LENGTH_LONG)
+                        toast.setGravity(Gravity.BOTTOM,0,200)
+                        toast.show()
+                    }
+                } else {
+                    skipToChapterIndex = currentChapterIndex - 1
+                    if(skipToChapterIndex < 0) skipToChapterIndex = 0
+                    val skipToChapter = currentlyPlaying.book.value.chapters[skipToChapterIndex]
+                    jumpToChapter(skipToChapter.startTimeOffset, currentlyPlaying.track.value.id,hasUserConfirmation = true)
+                }
+            }
+        }
+    }
+
+    fun makeJumpForwardsIcon(): Int {
+        return when (prefsRepo.jumpForwardSeconds) {
+            10L -> R.drawable.ic_forward_10_white
+            15L -> R.drawable.ic_forward_15_white
+            20L -> R.drawable.ic_forward_20_white
+            30L -> R.drawable.ic_forward_30_white
+            60L -> R.drawable.ic_forward_60_white
+            90L -> R.drawable.ic_forward_90_white
+            else -> R.drawable.ic_forward_30_white
+        }
+    }
+
+    fun makeJumpBackwardsIcon(): Int {
+        return when (prefsRepo.jumpBackwardSeconds) {
+            10L -> R.drawable.ic_replay_10_white
+            15L -> R.drawable.ic_replay_15_white
+            20L -> R.drawable.ic_replay_20_white
+            30L -> R.drawable.ic_replay_30_white
+            60L -> R.drawable.ic_replay_60_white
+            90L -> R.drawable.ic_replay_90_white
+            else -> R.drawable.ic_replay_10_white
+        }
+    }
+
     fun skipForwards() {
-        seekRelative(SKIP_FORWARDS, SKIP_FORWARDS_DURATION_MS_SIGNED)
+        seekRelative(makeSkipForward(prefsRepo), prefsRepo.jumpForwardSeconds * MILLIS_PER_SECOND)
     }
 
     fun skipBackwards() {
-        seekRelative(SKIP_BACKWARDS, SKIP_BACKWARDS_DURATION_MS_SIGNED)
+        seekRelative(makeSkipBackward(prefsRepo), prefsRepo.jumpBackwardSeconds * MILLIS_PER_SECOND * -1)
     }
 
     private fun seekRelative(action: PlaybackStateCompat.CustomAction, offset: Long) {
@@ -446,6 +523,9 @@ class CurrentlyPlayingViewModel(
                 FormattableString.from(R.string.sleep_timer_duration_15_minutes),
                 FormattableString.from(R.string.sleep_timer_duration_30_minutes),
                 FormattableString.from(R.string.sleep_timer_duration_40_minutes),
+                FormattableString.from(R.string.sleep_timer_duration_60_minutes),
+                FormattableString.from(R.string.sleep_timer_duration_90_minutes),
+                FormattableString.from(R.string.sleep_timer_duration_120_minutes),
                 FormattableString.from(R.string.sleep_timer_duration_end_of_chapter)
             )
         }
@@ -468,6 +548,18 @@ class CurrentlyPlayingViewModel(
                     }
                     R.string.sleep_timer_duration_40_minutes -> {
                         val duration = 40 * SECONDS_PER_MINUTE * MILLIS_PER_SECOND
+                        BEGIN to duration
+                    }
+                    R.string.sleep_timer_duration_60_minutes -> {
+                        val duration = 60 * SECONDS_PER_MINUTE * MILLIS_PER_SECOND
+                        BEGIN to duration
+                    }
+                    R.string.sleep_timer_duration_90_minutes -> {
+                        val duration = 90 * SECONDS_PER_MINUTE * MILLIS_PER_SECOND
+                        BEGIN to duration
+                    }
+                    R.string.sleep_timer_duration_120_minutes -> {
+                        val duration = 120 * SECONDS_PER_MINUTE * MILLIS_PER_SECOND
                         BEGIN to duration
                     }
                     R.string.sleep_timer_duration_end_of_chapter -> {

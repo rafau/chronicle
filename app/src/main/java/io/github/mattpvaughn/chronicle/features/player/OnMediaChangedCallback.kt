@@ -76,15 +76,14 @@ class OnMediaChangedCallback @Inject constructor(
         }
     }
 
-    /**
-     * TODO: eventually handle chapter changes
-     */
     override fun onChapterChange(chapter: Chapter) {
-//        mediaController.playbackState?.let { state ->
-//            serviceScope.launch(Injector.get().unhandledExceptionHandler()) {
-//                updateNotification(state.state)
-//            }
-//        }
+        Timber.d("onChapterChange called: chapter = [${chapter.index}] ${chapter.title} || current: [${currentlyPlaying.chapter.value.index}] ${currentlyPlaying.chapter.value.title}")
+
+        mediaController.playbackState?.let { state ->
+            serviceScope.launch(Injector.get().unhandledExceptionHandler()) {
+                updateNotification(state.state)
+            }
+        }
     }
 
     private suspend fun updateNotification(state: Int) {
@@ -111,6 +110,10 @@ class OnMediaChangedCallback @Inject constructor(
                 becomingNoisyReceiver.unregister()
                 if (notification != null) {
                     notificationManager.notify(NOW_PLAYING_NOTIFICATION, notification)
+                    foregroundServiceController.startForeground(
+                        NOW_PLAYING_NOTIFICATION,
+                        notification
+                    )
                 }
                 // Enables dismiss-on-swipe when paused- swiping triggers the delete
                 // intent on the notification to be called, which kills the service
